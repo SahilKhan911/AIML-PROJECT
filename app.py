@@ -7,6 +7,7 @@ import pandas as pd
 import streamlit as st
 
 from src.ml_pipeline import cluster_students, generate_recommendation, train_supervised
+from src.agentic_coach import AgenticStudyCoach, generate_pdf_report
 
 
 st.set_page_config(page_title="Project 2 - Milestone 1", layout="wide")
@@ -306,8 +307,44 @@ def render_analytics() -> None:
                 mime="text/csv",
             )
 
+def render_agentic_coach() -> None:
+    st.subheader("Agentic AI Study Coach")
+    st.markdown("Diagnose learning gaps and generate a personalized study plan using LLMs and live web search.")
+    
+    provider = st.radio("Select API Provider", ["Google Gemini", "Groq"], horizontal=True)
+    api_key = st.text_input(f"Enter your {provider} API Key", type="password")
+    
+    student_record = st.text_area("Student Record / Performance Notes", 
+                                  "Example: Student scores: G1=9, G2=10, absences=14, studytime=2. Struggles with math fundamentals.")
+    student_goal = st.text_input("Student Goal", "Pass the upcoming midterms with at least 60%.")
+    
+    if st.button("Generate Study Plan", type="primary"):
+        if not api_key:
+            st.error(f"Please enter a valid {provider} API key.")
+            return
+            
+        with st.spinner("Agent is reasoning, searching, and generating plan..."):
+            try:
+                coach = AgenticStudyCoach(api_key=api_key, provider=provider)
+                markdown_plan = coach.run(student_record=student_record, student_goal=student_goal)
+                
+                st.success("Plan generated successfully!")
+                
+                st.markdown("### Personalized AI Study Plan")
+                st.markdown(markdown_plan)
+                
+                pdf_bytes = generate_pdf_report(markdown_plan)
+                st.download_button(
+                    label="📥 Download Study Plan as PDF",
+                    data=pdf_bytes,
+                    file_name="AI_Study_Plan.pdf",
+                    mime="application/pdf"
+                )
+            except Exception as e:
+                st.error(f"An error occurred: {str(e)}")
 
-use_case_tab, model_analysis_tab, analytics_tab = st.tabs(["Use Case & Architecture", "Model Analysis & Limitations", "Web App"])
+
+use_case_tab, model_analysis_tab, analytics_tab, agentic_tab = st.tabs(["Use Case & Architecture", "Model Analysis & Limitations", "Classical ML App", "Agentic Study Coach"])
 
 with use_case_tab:
     render_use_case()
@@ -318,8 +355,11 @@ with model_analysis_tab:
 with analytics_tab:
     render_analytics()
 
+with agentic_tab:
+    render_agentic_coach()
+
 st.markdown("---")
 st.caption(
-    "Milestone 1 scope: classical ML only (no LLMs, no agentic workflows). "
+    "Milestone 1 & 2 scope: Classical ML UI + LangGraph/LLM Agentic workflows. "
     "Deployable on Streamlit Community Cloud, Hugging Face Spaces, or Render."
 )
