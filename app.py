@@ -62,6 +62,25 @@ Prioritized intervention list + downloadable recommendation report for mentors.
 """
     )
 
+    st.subheader("System Architecture Diagram")
+    st.graphviz_chart('''
+    digraph G {
+        rankdir="LR";
+        node [shape=box, style=filled, color=lightblue, fontname="Helvetica"];
+        
+        Data [label="Student Data (CSV)"]
+        Prep [label="Data Preprocessing\n(Missing Values, Scaling)"]
+        Feat [label="Feature Engineering\n(Risk Bucketing, Derived Metrics)"]
+        Model [label="ML Pipeline\n(Regression / Classification / Clustering)"]
+        Eval [label="Model Evaluation\n(Metrics, Cross-Validation)"]
+        Recs [label="Generative Rule-based\nStudy Recommendations"]
+        UI [label="Streamlit\nDashboard"]
+        
+        Data -> Prep -> Feat -> Model -> Eval -> Recs -> UI
+    }
+    ''')
+
+
     c1, c2, c3 = st.columns(3)
     with c1:
         st.metric("Primary Goal", "Early intervention")
@@ -80,6 +99,22 @@ Prioritized intervention list + downloadable recommendation report for mentors.
 """
         )
 
+def render_limitations() -> None:
+    st.subheader("Model Performance & Limitations Analysis")
+    st.markdown(
+        """
+### Analysis of Performance
+- **Data Quality Dependance**: The classical ML models (Logistic Regression, Random Forest, Gradient Boosting) perform extremely well when input datasets (like the UCI Student dataset) provide consistent historical features (like `G1` and `G2`).
+- **Feature Significance**: Regular attendance, prior grades, and study time play the most predictive roles in risk determination.
+- **Clustering Insights**: K-Means successfully partitions learners into At-Risk, Average, and High-Performing without need for explicit target labels, scoring solid silhouette scores on purely numeric columns.
+
+### Key Limitations
+1. **Limited Context**: The models only know what is in the CSV. Socio-emotional parameters, external life events, and detailed cognitive obstacles are completely uncaptured.
+2. **Deterministic Fallbacks**: Traditional ML can flag an "at-risk" student, but the recommendations are strictly rule-based (e.g., "Review mistakes if test scores < 50"). It lacks the semantic reasoning of an LLM.
+3. **Imbalanced Classes**: In typical educational settings, severe failures are the minority class. Even with balanced class weights, predicting the edge cases (extreme risk) remains challenging.
+4. **Generalization Constraints**: Models trained on one demographic or institution's grading system often experience drift when applied to a different system without re-training.
+"""
+    )
 
 def render_analytics() -> None:
     st.subheader("Analytics Dashboard")
@@ -272,10 +307,13 @@ def render_analytics() -> None:
             )
 
 
-use_case_tab, analytics_tab = st.tabs(["Use Case", "Web App"])
+use_case_tab, model_analysis_tab, analytics_tab = st.tabs(["Use Case & Architecture", "Model Analysis & Limitations", "Web App"])
 
 with use_case_tab:
     render_use_case()
+
+with model_analysis_tab:
+    render_limitations()
 
 with analytics_tab:
     render_analytics()
