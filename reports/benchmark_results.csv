@@ -1,0 +1,7 @@
+dataset,objective,model_name,accuracy,f1_weighted,cv_best_accuracy,mae,r2,cv_best_r2
+data/raw/uci_student/student-mat.csv,pass_fail,GradientBoostingClassifier,0.9113924050632911,0.9130854457864174,0.9335729260257563,,,
+data/raw/uci_student/student-mat.csv,risk_3level,LogisticRegression,0.7848101265822784,0.7855103000048622,0.8253968253968255,,,
+data/raw/uci_student/student-mat.csv,regression,GradientBoostingRegressor,,,,1.1995818971807015,0.8235356428960885,0.8841614297078966
+data/raw/uci_student/student-por.csv,pass_fail,GradientBoostingClassifier,0.9153846153846154,0.9144912402830955,0.9094412331406551,,,
+data/raw/uci_student/student-por.csv,risk_3level,GradientBoostingClassifier,0.8769230769230769,0.8687231859646434,0.8433774719354951,,,
+data/raw/uci_student/student-por.csv,regression,LinearRegression,,,,0.7610161791083124,0.8496909940004693,

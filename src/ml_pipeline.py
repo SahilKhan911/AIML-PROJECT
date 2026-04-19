@@ -471,7 +471,8 @@ def cluster_students(df: pd.DataFrame, n_clusters: int = 3, random_state: int = 
     return work_df, {"silhouette_score": float(sil)}
 
 
-def generate_recommendation(row: pd.Series) -> str:
+def _generate_recommendation_legacy(row: pd.Series) -> str:
+    """Original recommendation logic — kept as a hard fallback."""
     risk_col = None
     for candidate in ["predicted_risk_level", "cluster_risk_level", "predicted_category"]:
         if candidate in row and pd.notna(row[candidate]):
@@ -524,3 +525,262 @@ def generate_recommendation(row: pd.Series) -> str:
         )
 
     return "Maintain current pace and increase challenge with mixed-topic mock tests twice per week."
+
+
+def generate_recommendation(row: pd.Series) -> str:  # noqa: C901
+    """Personalized, feature-aware study recommendation.
+
+    Scans every numeric column in *row*, flags weak signals with severity
+    scores, and produces a concrete, actionable message tailored to the
+    student's predicted risk level.
+    """
+
+    # ------------------------------------------------------------------
+    # 1. Determine risk level (same priority order as legacy)
+    # ------------------------------------------------------------------
+    risk_label: str | None = None
+    for candidate in ["predicted_risk_level", "cluster_risk_level", "predicted_category"]:
+        if candidate in row and pd.notna(row[candidate]):
+            risk_label = str(row[candidate]).strip()
+            break
+
+    risk_lower = (risk_label or "").lower()
+    is_at_risk = "at-risk" in risk_lower or "fail" in risk_lower
+    is_average = "average" in risk_lower
+    is_high = "high" in risk_lower or "pass" in risk_lower
+
+    # ------------------------------------------------------------------
+    # 2. Build ranked weak-signal list from ALL numeric columns
+    #    Each entry: (severity: float, column_name, human_description, action)
+    # ------------------------------------------------------------------
+    _GRADE_KEYS = ("g1", "g2", "g3", "score", "exam", "quiz", "test", "accuracy")
+    _TIME_KEYS = ("time", "studytime")
+    _BAD_KEYS = ("failure", "absence")
+
+    signals: List[Tuple[float, str, str, str]] = []
+
+    for col_name in row.index:
+        lc = col_name.lower()
+
+        # Skip non-numeric and prediction/meta columns
+        try:
+            value = float(row[col_name])
+        except (TypeError, ValueError):
+            continue
+        if any(
+            skip in lc
+            for skip in (
+                "predicted", "cluster", "recommendation", "study_recommendation",
+                "numeric_mean", "numeric_std", "study_efficiency",
+                "grade_delta", "avg_prior",
+            )
+        ):
+            continue
+
+        # --- Grade columns ------------------------------------------------
+        if any(k in lc for k in _GRADE_KEYS):
+            # Use 20 as plausible max for g-columns, 100 otherwise
+            is_g_col = any(g in lc for g in ("g1", "g2", "g3"))
+            plausible_max = 20.0 if is_g_col else 100.0
+            threshold = 0.4 * plausible_max  # 40 % of max
+            if value < threshold:
+                # severity: how far below threshold (normalised 0-1)
+                severity = (threshold - value) / plausible_max
+                display = f"low {col_name} ({value:.0f}/{plausible_max:.0f})"
+                action = "schedule targeted revision sessions for this area"
+                signals.append((severity, col_name, display, action))
+
+        # --- Study-time columns -------------------------------------------
+        elif any(k in lc for k in _TIME_KEYS):
+            if value < 2:
+                severity = (2 - value) / 4  # normalised; 4 is a reasonable scale
+                display = f"low {col_name} ({value:.0f} hr/week)"
+                action = "increase daily study time to at least 2 hours"
+                signals.append((severity, col_name, display, action))
+
+        # --- Failure / absence columns ------------------------------------
+        elif any(k in lc for k in _BAD_KEYS):
+            if value > 2:
+                severity = min(value / 10.0, 1.0)
+                display = f"high {col_name} ({value:.0f})"
+                if "absence" in lc:
+                    action = "improve attendance — missing classes directly lowers your score"
+                else:
+                    action = "address past failures with remedial exercises and mentor support"
+                signals.append((severity, col_name, display, action))
+
+    # Sort by severity descending; keep top 3
+    signals.sort(key=lambda t: t[0], reverse=True)
+    top_signals = signals[:3]
+
+    # ------------------------------------------------------------------
+    # 3. Build the recommendation message
+    # ------------------------------------------------------------------
+    message = ""
+
+    if is_at_risk:
+        # --- At-risk / Fail students --------------------------------------
+        header = f"Predicted risk: {risk_label}."
+        if top_signals:
+            factors = ", ".join(s[2] for s in top_signals)
+            header += f" Key factors: {factors}."
+            actions = " ".join(
+                f"• {s[2].split()[1]}: {s[3]}." for s in top_signals
+            )
+            message = (
+                f"{header} Recommended actions — {actions} "
+                "Consider scheduling weekly mentor check-ins for accountability."
+            )
+        else:
+            message = (
+                f"{header} High-priority intervention: focus on fundamentals, "
+                "schedule daily revision blocks, and take a weekly checkpoint quiz."
+            )
+
+    elif is_average:
+        # --- Average students ---------------------------------------------
+        header = f"Predicted risk: {risk_label}. You're on a steady track."
+        if top_signals:
+            # Identify the single column closest to improvement threshold
+            closest = top_signals[0]
+            factors = ", ".join(s[2] for s in top_signals)
+            message = (
+                f"{header} Areas to watch: {factors}. "
+                f"Focus first on {closest[1]} — {closest[3]}. "
+                "Consistent improvement here can move you to High-performing."
+            )
+        else:
+            message = (
+                f"{header} No major weak spots detected. "
+                "Push further with mixed-topic practice tests and peer study groups "
+                "to move into the High-performing category."
+            )
+
+    elif is_high:
+        # --- High-performing students -------------------------------------
+        header = f"Predicted risk: {risk_label}. Excellent work!"
+        if top_signals:
+            factors = ", ".join(s[2] for s in top_signals)
+            message = (
+                f"{header} Minor areas for polish: {factors}. "
+                "Challenge yourself with advanced problem sets, competitive quizzes, "
+                "or peer tutoring to solidify mastery."
+            )
+        else:
+            message = (
+                f"{header} Keep up the momentum. "
+                "Try timed mock exams under test conditions twice per week, "
+                "explore supplementary reading, and mentor classmates to deepen understanding."
+            )
+
+    else:
+        # --- Unknown / unrecognised risk label ----------------------------
+        if top_signals:
+            factors = ", ".join(s[2] for s in top_signals)
+            actions = "; ".join(s[3] for s in top_signals)
+            message = f"Key factors: {factors}. Suggestions: {actions}."
+        # else: message stays empty → triggers fallback below
+
+    # ------------------------------------------------------------------
+    # Hard fallback: if the new logic produced nothing, use legacy
+    # ------------------------------------------------------------------
+    if not message:
+        return _generate_recommendation_legacy(row)
+
+    return message
+
+
+def explain_model(
+    artifacts: ModelArtifacts,
+    x: pd.DataFrame,
+    max_display: int = 10,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Compute SHAP-based feature importances for a trained supervised model.
+
+    Parameters
+    ----------
+    artifacts : ModelArtifacts
+        The artefacts returned by ``train_supervised``.
+    x : pd.DataFrame
+        Feature DataFrame (same columns as used during training, *without*
+        the target column).  Will be run through the pipeline's preprocessor.
+    max_display : int
+        Number of top features to include in *global_importance_df*.
+
+    Returns
+    -------
+    (global_importance_df, per_student_shap_df)
+        *global_importance_df* has columns ``feature`` and ``mean_abs_shap``,
+        sorted descending.
+        *per_student_shap_df* has shape ``(len(x), n_features)`` with the
+        index aligned to *x*.
+    """
+    import shap  # lazy import — keeps the app functional even if shap is absent
+
+    pipeline = artifacts.pipeline
+    preprocessor: ColumnTransformer = pipeline.named_steps["preprocess"]
+    model = pipeline.named_steps["model"]
+
+    # --- transformed data & feature names --------------------------------
+    x_transformed = preprocessor.transform(x)
+    try:
+        feature_names = list(preprocessor.get_feature_names_out())
+    except AttributeError:
+        feature_names = [f"feature_{i}" for i in range(x_transformed.shape[1])]
+
+    # --- choose the right SHAP explainer ---------------------------------
+    tree_types = (
+        RandomForestClassifier,
+        RandomForestRegressor,
+        GradientBoostingClassifier,
+        GradientBoostingRegressor,
+    )
+    linear_types = (LogisticRegression, LinearRegression)
+
+    if isinstance(model, tree_types):
+        explainer = shap.TreeExplainer(model)
+    elif isinstance(model, linear_types):
+        # LinearExplainer needs a dense array as background
+        if hasattr(x_transformed, "toarray"):
+            x_dense = x_transformed.toarray()
+        else:
+            x_dense = np.asarray(x_transformed)
+        explainer = shap.LinearExplainer(model, x_dense)
+    else:
+        raise TypeError(f"Unsupported model type for SHAP: {type(model).__name__}")
+
+    # --- compute SHAP values ---------------------------------------------
+    if hasattr(x_transformed, "toarray"):
+        shap_input = x_transformed.toarray()
+    else:
+        shap_input = np.asarray(x_transformed)
+
+    shap_values = explainer.shap_values(shap_input)
+
+    # For multi-class classifiers shap_values is a list of arrays (one per
+    # class).  Collapse to a single 2-D array by averaging absolute values
+    # across classes so every student gets one importance per feature.
+    if isinstance(shap_values, list):
+        shap_values = np.mean(np.abs(np.array(shap_values)), axis=0)
+
+    shap_arr = np.asarray(shap_values)
+    if shap_arr.ndim != 2 or shap_arr.shape[1] != len(feature_names):
+        raise ValueError(
+            f"SHAP matrix shape {shap_arr.shape} does not match "
+            f"{len(feature_names)} feature names."
+        )
+
+    # --- build output DataFrames -----------------------------------------
+    per_student_shap_df = pd.DataFrame(
+        shap_arr, columns=feature_names, index=x.index
+    )
+
+    mean_abs = np.abs(shap_arr).mean(axis=0)
+    global_importance_df = (
+        pd.DataFrame({"feature": feature_names, "mean_abs_shap": mean_abs})
+        .sort_values("mean_abs_shap", ascending=False)
+        .head(max_display)
+        .reset_index(drop=True)
+    )
+
+    return global_importance_df, per_student_shap_df

@@ -8,3 +8,4 @@ langchain-groq==0.2.3
 langgraph==0.2.64
 duckduckgo-search==7.2.1
 fpdf2==2.8.2
+shap

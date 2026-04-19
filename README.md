@@ -4,10 +4,13 @@ Intelligent Learning Analytics System (classical ML only).
 
 ## What this app does
 - Upload student performance CSV data.
+- **Exploratory Data Analysis (EDA)** tab to visualize numeric distributions, correlation heatmaps, and missing values before running ML.
 - Preprocess data (missing value handling + scaling + encoding).
-- Run boosted supervised ML with model selection (Logistic/RandomForest/GradientBoosting for classification, Linear/RandomForest/GradientBoosting for regression) or K-Means clustering.
+- Run boosted supervised ML with hyperparameter tuning and cross-validation (Logistic/RandomForest/GradientBoosting for classification, Linear/RandomForest/GradientBoosting for regression) or K-Means clustering.
+- **SHAP-based model explainability** showing global feature importance and granular per-student explanations.
 - Classify learners into `At-risk`, `Average`, `High-performing`.
-- Generate rule-based study recommendations.
+- Generate **personalized, feature-aware study recommendations** that directly reference the student's weakest signals by name (e.g., low grades, high absences).
+- Run **reproducible benchmarks** natively in the web app via the specific Benchmark tab across datasets and objectives.
 - Show evaluation metrics and downloadable results.
 
 ## Run locally
@@ -19,21 +22,25 @@ streamlit run app.py
 ```
 
 ## Reproducible benchmark
+You can run benchmarks directly from the **Benchmark tab** in the web app, which allows dynamic loading of sample datasets or custom CSVs to evaluate models across `Pass/Fail`, `3-Level Risk`, and `Regression` objectives. 
+
+Alternatively, run the automated benchmark script:
 ```bash
 source .venv/bin/activate
 python scripts_benchmark.py
 ```
-This runs boosted models on UCI student datasets for:
-- `G3` pass/fail (`>= 10` pass)
-- `G3` 3-level risk classification
+This script evaluates models and produces comprehensive outputs:
+- Console performance metrics
+- A detailed `reports/benchmark_results.csv`
+- A styled `reports/benchmark_report.html`
 
 ## Recommended datasets
 - https://www.kaggle.com/datasets/spscientist/students-performance-in-exams
 - https://archive.ics.uci.edu/ml/datasets/student+performance
 
 ## Local datasets included
-- `/Users/sahilkhan/Desktop/AIML Project/data/raw/uci_student/student-mat.csv`
-- `/Users/sahilkhan/Desktop/AIML Project/data/raw/uci_student/student-por.csv`
+- `data/raw/uci_student/student-mat.csv`
+- `data/raw/uci_student/student-por.csv`
 
 Notes:
 - UCI files are semicolon-delimited; the app now auto-detects delimiters.
